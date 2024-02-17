@@ -1,22 +1,44 @@
 using Chaos;
-using Polly;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polly.Simmy;
+using Polly.Simmy.Fault;
+using Polly.Simmy.Latency;
+using Polly.Simmy.Outcomes;
 
 var builder = WebApplication.CreateBuilder(args);
 var services = builder.Services;
 
+//Integrating IChaosManager with IServiceCollection: include IChaosManager in the Dependency Injection (DI) container
+services.TryAddSingleton<IChaosManager, ChaosManager>();
+services.AddHttpContextAccessor();
+
 var httpClientBuilder = builder.Services.AddHttpClient<TodosClient>(client => client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com"));
 
 //injecting chaos
-httpClientBuilder.AddResilienceHandler("chaos", (ResiliencePipelineBuilder<HttpResponseMessage> builder) => 
+httpClientBuilder.AddResilienceHandler("chaos", (builder, context) => 
 {
-    // Set the chaos injection rate to 5%
-    const double InjectionRate = 0.05;
+    // Get IChaosManager from dependency injection
+    var chaosManager = context.ServiceProvider.GetRequiredService<IChaosManager>();
 
     builder
-        .AddChaosLatency(InjectionRate, TimeSpan.FromSeconds(5)) // Add latency to simulate network delays
-        .AddChaosFault(InjectionRate, () => new InvalidOperationException("Chaos strategy injection!")) // Inject faults to simulate system errors
-        .AddChaosOutcome(InjectionRate, () => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)); // Simulate server errors
+        .AddChaosLatency(new ChaosLatencyStrategyOptions
+        {
+            EnabledGenerator = args => chaosManager.IsChaosEnabledAsync(args.Context),
+            InjectionRateGenerator = args => chaosManager.GetInjectionRateAsync(args.Context),
+            Latency = TimeSpan.FromSeconds(5)
+        })
+        .AddChaosFault(new ChaosFaultStrategyOptions
+        {
+            EnabledGenerator = args => chaosManager.IsChaosEnabledAsync(args.Context),
+            InjectionRateGenerator = args => chaosManager.GetInjectionRateAsync(args.Context),
+            FaultGenerator = new FaultGenerator().AddException(() => new InvalidOperationException("Chaos strategy injection!"))
+        })
+        .AddChaosOutcome(new ChaosOutcomeStrategyOptions<HttpResponseMessage>
+        {
+            EnabledGenerator = args => chaosManager.IsChaosEnabledAsync(args.Context),
+            InjectionRateGenerator = args => chaosManager.GetInjectionRateAsync(args.Context),
+            OutcomeGenerator = new OutcomeGenerator<HttpResponseMessage>().AddResult(() => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError))
+        });           
 });
 
 //run the app
