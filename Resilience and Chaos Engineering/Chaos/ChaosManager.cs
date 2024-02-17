@@ -14,13 +14,13 @@ internal class ChaosManager(IWebHostEnvironment environment, IHttpContextAccesso
             return ValueTask.FromResult(true);
         }
 
-        // This condition is demonstrative and not recommended to use in real apps.
+        // This condition serves as a demonstration and is not advisable for use in actual applications.
         if (environment.IsProduction() &&
             contextAccessor.HttpContext is {} httpContext && 
             httpContext.Request.Query.TryGetValue(UserQueryParam, out var values) &&
             values == TestUser)
         {
-            // Enable chaos for 'test' user even in production 
+            // Enable chaos mode for the 'test' user, even within the production environment. 
             return ValueTask.FromResult(true);
         }
 
