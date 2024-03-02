@@ -16,10 +16,8 @@ services.AddHttpContextAccessor();
 
 var httpClientBuilder = builder.Services.AddHttpClient<TodosClient>(client => client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com"));
 
-// adding standard resilience
-httpClientBuilder
-    .AddStandardResilienceHandler()
-    .Configure(options => 
+//adding standard resilience to handle the chaos
+httpClientBuilder.AddStandardResilienceHandler().Configure(options => 
     {
         // Update attempt timeout to 1 second
         options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(1);
