@@ -1,5 +1,7 @@
 using Chaos;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
 using Polly.Simmy;
 using Polly.Simmy.Fault;
 using Polly.Simmy.Latency;
@@ -13,6 +15,31 @@ services.TryAddSingleton<IChaosManager, ChaosManager>();
 services.AddHttpContextAccessor();
 
 var httpClientBuilder = builder.Services.AddHttpClient<TodosClient>(client => client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com"));
+
+// adding standard resilience
+httpClientBuilder
+    .AddStandardResilienceHandler()
+    .Configure(options => 
+    {
+        // Update attempt timeout to 1 second
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(1);
+
+        // Update circuit breaker to handle transient errors and InvalidOperationException
+        options.CircuitBreaker.ShouldHandle = args => args.Outcome switch
+        {
+            {} outcome when HttpClientResiliencePredicates.IsTransient(outcome) => PredicateResult.True(),
+            { Exception: InvalidOperationException } => PredicateResult.True(),
+            _ => PredicateResult.False()
+        };
+
+        // Update retry strategy to handle transient errors and InvalidOperationException
+        options.Retry.ShouldHandle = args => args.Outcome switch
+        {
+            {} outcome when HttpClientResiliencePredicates.IsTransient(outcome) => PredicateResult.True(),
+            { Exception: InvalidOperationException } => PredicateResult.True(),
+            _ => PredicateResult.False()
+        };
+    });
 
 //injecting chaos
 httpClientBuilder.AddResilienceHandler("chaos", (builder, context) => 
